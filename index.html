@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSBON 현장통화 관리자</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<!-- Firebase 웹 SDK (구글 공식 CDN) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<style>
+  :root {
+    --bg: #F4F6F9; --card: #FFFFFF; --line: #E5E7EB; --text: #111827; --sub: #4B5563;
+    --accent: #2563EB; --accent-soft: #EFF6FF; --ok: #15803D; --ok-soft: #DCFCE7; --danger: #B91C1C;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', system-ui, sans-serif; }
+  button, input, select { font-family: inherit; font-size: 15px; }
+  button { cursor: pointer; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  header.top h1 { margin: 0; font-size: 24px; letter-spacing: -0.4px; }
+  .muted { color: var(--sub); font-size: 14px; }
+  .btn { height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #D1D5DB; background: #fff; color: var(--text); font-weight: 500; }
+  .btn:hover { background: #F9FAFB; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .btn.primary:hover { background: #1D4ED8; }
+  .btn.danger { color: var(--danger); border-color: #FCA5A5; }
+  .btn.small { height: 32px; padding: 0 10px; font-size: 13px; }
+  .card { background: var(--card); border: 1px solid #E9ECF1; border-radius: 16px; }
+
+  /* 로그인 */
+  .login { max-width: 380px; margin: 12vh auto 0; padding: 32px; display: flex; flex-direction: column; gap: 14px; }
+  .login h1 { margin: 0 0 4px; font-size: 22px; }
+  label.field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500; }
+  label.field input { height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #D1D5DB; }
+  .error { color: var(--danger); font-size: 14px; min-height: 20px; white-space: pre-line; }
+
+  /* 그룹 탭 */
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .tab { height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #D1D5DB; background: #fff; color: #374151; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; }
+  .tab .n { font-size: 12px; color: var(--sub); background: #F3F4F6; border-radius: 999px; padding: 1px 8px; }
+  .tab[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .tab[aria-pressed="true"] .n { background: rgba(255,255,255,0.22); color: #fff; }
+  .tab.add { border-style: dashed; color: var(--accent); }
+
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .toolbar .left { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .search { height: 40px; width: 240px; max-width: 100%; padding: 0 12px; border-radius: 10px; border: 1px solid #D1D5DB; }
+  .groupname { font-size: 18px; font-weight: 700; }
+
+  /* 기기 목록 */
+  .tablebox { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid #F0F2F5; font-size: 15px; vertical-align: middle; }
+  th { font-size: 13px; color: var(--sub); font-weight: 700; background: #FAFBFC; }
+  tr:last-child td { border-bottom: none; }
+  .who { display: flex; align-items: center; gap: 12px; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 13px; font-weight: 500; }
+  .badge.on { background: var(--ok-soft); color: #166534; }
+  .badge.off { background: #F3F4F6; color: var(--sub); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  select.group { height: 36px; padding: 0 8px; border-radius: 8px; border: 1px solid #D1D5DB; background: #fff; min-width: 140px; }
+  .empty { padding: 40px 16px; text-align: center; color: var(--sub); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- 로그인 -->
+<main id="loginView" class="login card">
+  <h1>SSBON 현장통화 관리자</h1>
+  <div class="muted">Firebase에 만든 관리자 계정으로 로그인하세요.</div>
+  <form id="loginForm" style="display: flex; flex-direction: column; gap: 14px">
+    <label class="field">이메일<input id="email" type="email" autocomplete="username" required></label>
+    <label class="field">비밀번호<input id="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn primary" type="submit" style="height: 46px">로그인</button>
+  </form>
+  <div id="loginError" class="error" role="alert"></div>
+</main>
+
+<!-- 관리 화면 -->
+<div id="appView" class="wrap hidden">
+  <header class="top">
+    <div>
+      <h1>SSBON 현장통화 관리자</h1>
+      <div class="muted" id="summary">불러오는 중…</div>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center">
+      <span class="muted" id="whoami"></span>
+      <button class="btn" id="logout" type="button">로그아웃</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="그룹"></nav>
+
+  <div class="toolbar">
+    <div class="left">
+      <span class="groupname" id="groupTitle">전체</span>
+      <span id="groupActions" class="hidden" style="display: flex; gap: 6px">
+        <button class="btn small" id="renameGroup" type="button">이름 변경</button>
+        <button class="btn small danger" id="deleteGroup" type="button">그룹 삭제</button>
+      </span>
+    </div>
+    <label><span class="hidden">이름 검색</span><input id="search" class="search" type="search" placeholder="이름 검색"></label>
+  </div>
+
+  <div id="error" class="error" role="alert"></div>
+
+  <section class="card tablebox">
+    <table>
+      <thead><tr><th>이름</th><th>상태</th><th>앱 버전</th><th>그룹</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty hidden">이 그룹에 등록된 사람이 없습니다.<br>아래 "전체" 탭에서 사람을 골라 그룹을 지정하세요.</div>
+  </section>
+</div>
+
+<script>
+// ---- Firebase 설정 (앱과 같은 프로젝트) ----
+// 로그인할 때 "API key not valid" 가 나오면: Firebase 콘솔 → 프로젝트 설정 → 앱 추가 → 웹(</>) 으로
+// 웹 앱을 등록하고, 나오는 firebaseConfig 의 apiKey / appId 를 아래에 붙여 넣으세요.
+const firebaseConfig = {
+  apiKey: "AIzaSyAOFwjZk-ZJYj-kW3GcWRflRAdF163HzuM",
+  authDomain: "ssbon-call.firebaseapp.com",
+  databaseURL: "https://ssbon-call-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "ssbon-call",
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+const NONE = "__none__";       // 미분류 탭
+let users = {};                 // users/{id}: 앱이 올리는 기기 정보
+let groups = {};                // org/groups/{gid}: {name, order}
+let members = {};               // org/members/{id}: gid
+let selected = null;            // null = 전체, NONE = 미분류, 그 밖 = 그룹ID
+let detach = [];
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...children) => {
+  const e = document.createElement(tag);
+  Object.assign(e, props);
+  for (const c of children) e.append(c);
+  return e;
+};
+
+// ---- 로그인 ----
+$("loginForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("loginError").textContent = "";
+  try {
+    await auth.signInWithEmailAndPassword($("email").value.trim(), $("password").value);
+  } catch (e) {
+    const map = {
+      "auth/invalid-credential": "이메일 또는 비밀번호가 틀렸습니다.",
+      "auth/wrong-password": "이메일 또는 비밀번호가 틀렸습니다.",
+      "auth/user-not-found": "이메일 또는 비밀번호가 틀렸습니다.",
+      "auth/operation-not-allowed": "Firebase에서 '이메일/비밀번호' 로그인이 꺼져 있습니다.\nAuthentication → 로그인 방법에서 켜 주세요.",
+      "auth/too-many-requests": "시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
+    };
+    $("loginError").textContent = map[e.code] || (String(e.message).includes("API key")
+      ? "API 키가 웹에서 막혀 있습니다. 이 파일 아래쪽 설정 안내를 따라 웹 앱을 등록해 주세요."
+      : "로그인 실패: " + e.message);
+  }
+});
+
+$("logout").addEventListener("click", () => auth.signOut());
+
+auth.onAuthStateChanged((user) => {
+  detach.forEach((f) => f());
+  detach = [];
+  $("loginView").classList.toggle("hidden", !!user);
+  $("appView").classList.toggle("hidden", !user);
+  if (!user) return;
+  $("whoami").textContent = user.email || "";
+  listen("users", (v) => { users = v || {}; render(); });
+  listen("org/groups", (v) => { groups = v || {}; render(); });
+  listen("org/members", (v) => { members = v || {}; render(); });
+});
+
+function listen(path, cb) {
+  const ref = db.ref(path);
+  const fn = ref.on("value", (s) => cb(s.val()), (e) => showError(e));
+  detach.push(() => ref.off("value", fn));
+}
+
+function showError(e) {
+  const denied = String(e && (e.code || e.message)).toUpperCase().includes("PERMISSION");
+  $("error").textContent = denied
+    ? "권한이 없습니다. Firebase Realtime Database 규칙의 관리자 이메일이 지금 로그인한 계정과 같은지 확인하세요."
+    : "오류: " + (e && e.message);
+}
+
+async function write(updates) {
+  $("error").textContent = "";
+  try { await db.ref().update(updates); } catch (e) { showError(e); }
+}
+
+// ---- 그룹 ----
+function sortedGroups() {
+  return Object.entries(groups)
+    .map(([id, g]) => ({ id, name: g.name || "(이름 없음)", order: g.order || 0 }))
+    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, "ko"));
+}
+
+function groupOf(uid) {
+  const gid = members[uid];
+  return gid && groups[gid] ? gid : null;
+}
+
+async function addGroup() {
+  const name = prompt("새 그룹 이름 (예: 1공장, 2공장, 품질)");
+  if (!name || !name.trim()) return;
+  const id = db.ref("org/groups").push().key;
+  const order = Math.max(0, ...sortedGroups().map((g) => g.order)) + 1;
+  await write({ [`org/groups/${id}`]: { name: name.trim(), order } });
+  selected = id;
+  render();
+}
+
+$("renameGroup").addEventListener("click", async () => {
+  const g = groups[selected];
+  if (!g) return;
+  const name = prompt("그룹 이름 변경", g.name);
+  if (name && name.trim()) await write({ [`org/groups/${selected}/name`]: name.trim() });
+});
+
+$("deleteGroup").addEventListener("click", async () => {
+  const g = groups[selected];
+  if (!g) return;
+  const inside = Object.keys(members).filter((uid) => members[uid] === selected);
+  if (!confirm(`'${g.name}' 그룹을 삭제할까요?\n소속된 ${inside.length}명은 '미분류'로 바뀝니다.`)) return;
+  const updates = { [`org/groups/${selected}`]: null };
+  inside.forEach((uid) => (updates[`org/members/${uid}`] = null));
+  await write(updates);
+  selected = null;
+  render();
+});
+
+$("search").addEventListener("input", render);
+
+// ---- 화면 그리기 ----
+const AVATAR = [["#FDE68A", "#78350F"], ["#BFDBFE", "#1E3A8A"], ["#BBF7D0", "#14532D"], ["#FBCFE8", "#831843"], ["#DDD6FE", "#4C1D95"], ["#FED7AA", "#7C2D12"]];
+function avatarColor(id) {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR[h % AVATAR.length];
+}
+
+function ago(ms) {
+  if (!ms) return "기록 없음";
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return "방금 전";
+  if (s < 3600) return `${Math.floor(s / 60)}분 전`;
+  if (s < 86400) return `${Math.floor(s / 3600)}시간 전`;
+  return `${Math.floor(s / 86400)}일 전`;
+}
+
+function render() {
+  const list = Object.entries(users).map(([id, u]) => ({ id, ...u, name: u.name || "(이름 없음)" }));
+  const gs = sortedGroups();
+  if (selected && selected !== NONE && !groups[selected]) selected = null;
+
+  // 탭
+  const count = (gid) => list.filter((u) => (gid === NONE ? !groupOf(u.id) : groupOf(u.id) === gid)).length;
+  const tabs = $("tabs");
+  tabs.replaceChildren();
+  const tab = (id, label, n) => {
+    const b = el("button", { type: "button", className: "tab" }, label, el("span", { className: "n", textContent: n }));
+    b.setAttribute("aria-pressed", String(selected === id));
+    b.addEventListener("click", () => { selected = id; render(); });
+    tabs.append(b);
+  };
+  tab(null, "전체", list.length);
+  gs.forEach((g) => tab(g.id, g.name, count(g.id)));
+  tab(NONE, "미분류", count(NONE));
+  const add = el("button", { type: "button", className: "tab add", textContent: "+ 그룹 추가" });
+  add.addEventListener("click", addGroup);
+  tabs.append(add);
+
+  $("groupTitle").textContent = selected === null ? "전체" : selected === NONE ? "미분류" : groups[selected].name;
+  $("groupActions").classList.toggle("hidden", !(selected && selected !== NONE));
+
+  const online = list.filter((u) => u.online).length;
+  $("summary").textContent = `등록된 기기 ${list.length}대 · 접속 중 ${online}대 · 그룹 ${gs.length}개`;
+
+  // 목록
+  const q = $("search").value.trim();
+  const shown = list
+    .filter((u) => selected === null || (selected === NONE ? !groupOf(u.id) : groupOf(u.id) === selected))
+    .filter((u) => !q || u.name.includes(q))
+    .sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0) || a.name.localeCompare(b.name, "ko"));
+
+  const rows = $("rows");
+  rows.replaceChildren();
+  for (const u of shown) {
+    const [bg, fg] = avatarColor(u.id);
+    const av = el("div", { className: "avatar", textContent: u.name.slice(0, 1) });
+    av.style.background = bg; av.style.color = fg; av.setAttribute("aria-hidden", "true");
+
+    const status = u.online
+      ? el("span", { className: "badge on" }, el("span", { className: "dot" }), "접속 중")
+      : el("span", { className: "badge off" }, el("span", { className: "dot" }), "마지막 접속 " + ago(u.lastSeen));
+
+    const sel = el("select", { className: "group" });
+    sel.setAttribute("aria-label", `${u.name} 그룹`);
+    sel.append(el("option", { value: "", textContent: "미분류" }));
+    gs.forEach((g) => sel.append(el("option", { value: g.id, textContent: g.name })));
+    sel.value = groupOf(u.id) || "";
+    sel.addEventListener("change", () => write({ [`org/members/${u.id}`]: sel.value || null }));
+
+    const actions = el("td");
+    if (!u.online) {
+      const del = el("button", { type: "button", className: "btn small danger", textContent: "기록 삭제" });
+      del.addEventListener("click", () => {
+        if (confirm(`'${u.name}' 기기 기록을 삭제할까요?\n(앱을 다시 켜면 다시 등록됩니다)`)) {
+          write({ [`users/${u.id}`]: null, [`org/members/${u.id}`]: null });
+        }
+      });
+      actions.append(del);
+    }
+
+    rows.append(el("tr", {},
+      el("td", {}, el("div", { className: "who" }, av, el("span", { textContent: u.name, style: "font-weight:700" }))),
+      el("td", {}, status),
+      el("td", { textContent: u.appVersion ? `v1.0.${u.appVersion}` : "-" }),
+      el("td", {}, sel),
+      actions,
+    ));
+  }
+  $("empty").classList.toggle("hidden", shown.length > 0);
+}
+</script>
+</body>
+</html>
